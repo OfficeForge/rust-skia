@@ -1,0 +1,61 @@
+name: linux-svg-binaries
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: 'linux-svg-binaries-${{ github.ref }}'
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+    runs-on: ubuntu-22.04
+    container: ghcr.io/pragmatrix/rust-skia-linux:latest
+    env:
+      SKIA_DEBUG: 0
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - name: Fix git dubious ownership
+        run: git config --global --add safe.directory '*'
+
+      - name: Prepare Rustup
+        run: (cd /github/home && ln -s /root/.cargo)
+
+      - name: Update Rust
+        run: rustup update && rustup default stable
+
+      - name: Install target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Build
+        run: |
+          cargo build -p skia-safe --release --features "svg,textlayout" --target ${{ matrix.target }}
+          echo "SKIA_BINARIES_TAG=$(cat "${STAGING}/skia-binaries/tag.txt")" >> $GITHUB_ENV
+          echo "SKIA_BINARIES_KEY=$(cat "${STAGING}/skia-binaries/key.txt")" >> $GITHUB_ENV
+        env:
+          BUILD_ARTIFACTSTAGINGDIRECTORY: ${{ runner.temp }}
+          STAGING: ${{ runner.temp }}
+
+      - name: Compress binaries
+        uses: a7ul/tar-action@v1.1.2
+        with:
+          command: c
+          cwd: ${{ runner.temp }}
+          files: skia-binaries
+          outPath: ${{ runner.temp }}/skia-binaries-${{ env.SKIA_BINARIES_KEY }}.tar.gz
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: skia-binaries-${{ matrix.target }}
+          path: ${{ runner.temp }}/skia-binaries-${{ env.SKIA_BINARIES_KEY }}.tar.gz
