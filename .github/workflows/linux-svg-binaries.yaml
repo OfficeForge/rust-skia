@@ -1,7 +1,9 @@
 name: linux-svg-binaries
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - '0.81.0-svg'
 
 concurrency:
   group: 'linux-svg-binaries-${{ github.ref }}'
