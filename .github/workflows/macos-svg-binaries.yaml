@@ -1,0 +1,60 @@
+name: macos-svg-binaries
+
+on:
+  push:
+    branches:
+      - '0.81.0-svg'
+  workflow_dispatch:
+
+concurrency:
+  group: 'macos-svg-binaries-${{ github.ref }}'
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
+    runs-on: macos-14
+    env:
+      SKIA_DEBUG: 0
+      MACOSX_DEPLOYMENT_TARGET: '10.13'
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Ninja
+        run: brew install ninja
+
+      - name: Build
+        run: |
+          cargo build -p skia-safe --release --features "svg,textlayout" --target ${{ matrix.target }}
+          echo "SKIA_BINARIES_TAG=$(cat "${STAGING}/skia-binaries/tag.txt")" >> $GITHUB_ENV
+          echo "SKIA_BINARIES_KEY=$(cat "${STAGING}/skia-binaries/key.txt")" >> $GITHUB_ENV
+        env:
+          BUILD_ARTIFACTSTAGINGDIRECTORY: ${{ runner.temp }}
+          STAGING: ${{ runner.temp }}
+
+      - name: Compress binaries
+        uses: a7ul/tar-action@v1.1.2
+        with:
+          command: c
+          cwd: ${{ runner.temp }}
+          files: skia-binaries
+          outPath: ${{ runner.temp }}/skia-binaries-${{ env.SKIA_BINARIES_KEY }}.tar.gz
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: skia-binaries-${{ matrix.target }}
+          path: ${{ runner.temp }}/skia-binaries-${{ env.SKIA_BINARIES_KEY }}.tar.gz
